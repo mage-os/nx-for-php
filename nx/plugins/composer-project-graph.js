@@ -11,9 +11,9 @@ var references = null;
 function loadReferences() {
     if(references == null){
         if(!fs.existsSync(REFERENCES_PATH)){
-            console.log('generating references map (this can take a while)');
+            //console.log('generating references map (this can take a while)');
             execSync('php -d xdebug.mode=off -d memory_limit=1G ./nx/bin/php-classes.phar --all --output-json --include-source-file --include-module-names ./ > ' + REFERENCES_PATH);
-            console.log('references map generated');
+            //console.log('references map generated');
         }
         references = JSON.parse(fs.readFileSync(REFERENCES_PATH).toString());
     }
