@@ -21,17 +21,28 @@ paths = ig.filter(paths);
 paths.forEach(path => {
     var composerJson = JSON.parse(fs.readFileSync(path));
     if(composerJson.name){
+        // Collect every Test/Unit directory in the package at any depth.
+        // Components keep their tests in <Package>/<Component>/Test/Unit
+        // (e.g. Framework/Interception/Test/Unit), so glob for all of them.
+        // Mirrors dev/tests/unit/phpunit.xml.dist, which includes both
+        // lib/internal/*/*/Test/Unit and lib/internal/*/*/*/Test/Unit.
+        let packageRoot = path.replace('composer.json', '');
+        let unitTestDirectories = glob.sync(packageRoot + '**/Test/Unit');
+        let unitTestCommand = unitTestDirectories.length? '${DEN} env exec -T php-fpm ./vendor/bin/phpunit -c dev/tests/unit/phpunit.xml ' + unitTestDirectories.join(' ') : 'echo "no unit tests"';
         workspaceJson.projects[composerJson.name] = {
             root: path.replace('composer.json', ''),
             sourceRoot: path.replace('/composer.json', ''),
             projectType: composerJson.type? composerJson.type : 'unknown', 
             targets: {
                 'test:unit': {
-                    //command: 'echo "TEST: '+composerJson.name+'"'
-                    command: './vendor/bin/phpunit -c phpunit.nx.xml ' + path.replace('composer.json', '') + 'Test/Unit'
+                    command: unitTestCommand
+
                 },
                 'test:integration': {
                     command: 'echo "integration tests for: '+composerJson.name+'"'
+                },
+                'test:test': {
+                    command: unitTestCommand
                 }
             },
             tags: [],
