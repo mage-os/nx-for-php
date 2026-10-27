@@ -9,6 +9,8 @@ if(fs.existsSync('.gitignore')){
         ig.add(line);
     })
 }
+const PHPUNIT = '${DEN} env exec -T php-fpm ./vendor/bin/phpunit -c dev/tests/unit/phpunit.xml';
+
 var workspaceJson = {
     version: 2,
     projects: {}
@@ -28,7 +30,23 @@ paths.forEach(path => {
         // lib/internal/*/*/Test/Unit and lib/internal/*/*/*/Test/Unit.
         let packageRoot = path.replace('composer.json', '');
         let unitTestDirectories = glob.sync(packageRoot + '**/Test/Unit');
-        let unitTestCommand = unitTestDirectories.length? '${DEN} env exec -T php-fpm ./vendor/bin/phpunit -c dev/tests/unit/phpunit.xml ' + unitTestDirectories.join(' ') : 'echo "no unit tests"';
+        let unitTestCommand = unitTestDirectories.length? PHPUNIT + ' ' + unitTestDirectories.join(' ') : 'echo "no unit tests"';
+        // Works around php/php-src#24488: in PHP 8.4.27 and 8.5.12 the cycle
+        // collector double-frees a SimpleXMLElement's properties table, so the run
+        // aborts with "zend_mm_heap corrupted" and prints no test summary. Here it
+        // fires when View/Test/Unit/Layout/Reader/UiComponentTest shares a process
+        // with View/Test/Unit/LayoutTest; either file alone is fine, and PHP 8.3.x
+        // and <= 8.4.26 are unaffected. Corruption cannot cross a process boundary,
+        // so run that one file in a phpunit process of its own. Both commands
+        // always run and their exit codes are combined, so failures in the main run
+        // cannot hide the split file's result.
+        // Fixed upstream by php-src f9634847258a; revert once CI runs PHP 8.4.28.
+        let heapBugFile = packageRoot + 'View/Test/Unit/Layout/Reader/UiComponentTest.php';
+        if (unitTestDirectories.length && fs.existsSync(heapBugFile)) {
+            unitTestCommand = PHPUNIT + " --exclude-filter '/Reader.UiComponentTest/' " + unitTestDirectories.join(' ')
+                + '; rc_main=$?; ' + PHPUNIT + ' ' + heapBugFile
+                + '; rc_split=$?; exit $((rc_main|rc_split))';
+        }
         workspaceJson.projects[composerJson.name] = {
             root: path.replace('composer.json', ''),
             sourceRoot: path.replace('/composer.json', ''),
